@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Debug</title>
+</head>
+<body>
+    <h1>Audio Debug Test</h1>
+    <button onclick="testMicrophone()">Test Microphone</button>
+    <button onclick="testSpeakers()">Test Speakers</button>
+    <div id="results"></div>
+
+    <script>
+        async function testMicrophone() {
+            const results = document.getElementById('results');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                results.innerHTML += '<p>✅ Microphone access granted</p>';
+                
+                // Create audio context to test audio levels
+                const audioContext = new AudioContext();
+                const analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+                
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                function checkAudio() {
+                    analyser.getByteFrequencyData(dataArray);
+                    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    results.innerHTML += `<p>Audio level: ${average.toFixed(2)}</p>`;
+                    
+                    if (average > 10) {
+                        results.innerHTML += '<p>🎤 Microphone is working - audio detected!</p>';
+                    }
+                }
+                
+                setInterval(checkAudio, 1000);
+                
+            } catch (error) {
+                results.innerHTML += `<p>❌ Microphone error: ${error.message}</p>`;
+            }
+        }
+
+        async function testSpeakers() {
+            const results = document.getElementById('results');
+            try {
+                // Create a simple beep
+                const audioContext = new AudioContext();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 440; // A note
+                gainNode.gain.value = 0.1;
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.5);
+                
+                results.innerHTML += '<p>🔊 Speaker test played (did you hear a beep?)</p>';
+                
+            } catch (error) {
+                results.innerHTML += `<p>❌ Speaker error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Voice Agentt</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .voice-controls {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .session-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .session-info h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .transcript {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .transcript h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .transcript-entry {
+            margin: 10px 0;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .transcript-user {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .transcript-assistant {
+            background-color: #f3e5f5;
+        }
+        #daily-call-object {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+    <script src="https://unpkg.com/@daily-co/daily-js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Simple Voice Agentt</h1>
+        
+        <div class="form-group">
+            <label for="userName">Your Name (optional):</label>
+            <input type="text" id="userName" placeholder="Enter your name">
+        </div>
+        
+        <div class="form-group">
+            <label for="ttsProvider">Voice Provider:</label>
+            <select id="ttsProvider">
+                <option value="google">Google TTS</option>
+                <option value="elevenlabs">ElevenLabs</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="voiceName">Voice Name (optional):</label>
+            <input type="text" id="voiceName" placeholder="e.g., rhea">
+        </div>
+        
+        <div class="voice-controls">
+            <button id="startVoiceBtn" onclick="startVoiceSession()">Start Voice Session</button>
+            <button id="endVoiceBtn" onclick="endVoiceSession()" disabled>End Session</button>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div id="sessionInfo" class="session-info" style="display: none;">
+            <h3>Session Information</h3>
+            <p><strong>Session ID:</strong> <span id="sessionId"></span></p>
+            <p><strong>Room URL:</strong> <span id="roomUrl"></span></p>
+        </div>
+        
+        <div id="daily-call-object" style="display: none;"></div>
+        
+        <div id="transcript" class="transcript">
+            <h3>Conversation Transcript</h3>
+            <div id="transcriptContent"></div>
+        </div>
+    </div>
+
+    <script>
+        let dailyCall = null;
+        let currentSessionId = null;
+        let transcriptWS = null;
+        let audioWebSocket = null;
+        let audioContext = null;
+        let audioQueue = [];
+        let isPlaying = false;
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+        }
+
+        function hideStatus() {
+            document.getElementById('status').style.display = 'none';
+        }
+
+        function addToTranscript(speaker, message) {
+            const transcriptContent = document.getElementById('transcriptContent');
+            const transcriptDiv = document.getElementById('transcript');
+            
+            const entry = document.createElement('div');
+            entry.className = `transcript-entry transcript-${speaker}`;
+            entry.innerHTML = `<strong>${speaker === 'user' ? 'You' : 'AI'}:</strong> ${message}`;
+            
+            transcriptContent.appendChild(entry);
+            transcriptDiv.style.display = 'block';
+            
+            // Auto-scroll to bottom
+            transcriptContent.scrollTop = transcriptContent.scrollHeight;
+        }
+
+        // WebSocket Audio Functions
+        async function setupAudioContext() {
+            if (!audioContext) {
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                console.log('🎵 Audio context created for WebSocket audio');
+            }
+        }
+
+        function connectAudioWebSocket(sessionId) {
+            if (audioWebSocket) {
+                audioWebSocket.close();
+            }
+
+            // Reset audio state for new session
+            audioQueue = [];
+            isPlaying = false;
+
+            const wsUrl = `ws://localhost:8000/ws/audio/${sessionId}`;
+            console.log('🔊 Connecting to audio WebSocket:', wsUrl);
+            
+            audioWebSocket = new WebSocket(wsUrl);
+            
+            audioWebSocket.onopen = async () => {
+                console.log('✅ Audio WebSocket connected');
+                await setupAudioContext();
+            };
+            
+            audioWebSocket.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    // Received audio data
+                    const arrayBuffer = await event.data.arrayBuffer();
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    console.log('🎵 Received audio data:', uint8Array.length, 'bytes');
+                    
+                    // Convert PCM to AudioBuffer and play
+                    playAudioData(uint8Array);
+                } else {
+                    // Text message (ping/pong)
+                    console.log('Audio WS message:', event.data);
+                }
+            };
+            
+            audioWebSocket.onerror = (error) => {
+                console.error('❌ Audio WebSocket error:', error);
+            };
+            
+            audioWebSocket.onclose = () => {
+                console.log('🔌 Audio WebSocket disconnected');
+                audioWebSocket = null;
+            };
+        }
+
+        function playAudioData(uint8Array) {
+            try {
+                if (!audioContext || audioContext.state === 'closed') {
+                    console.warn('Audio context not available');
+                    return;
+                }
+                
+                // Convert bytes back to float32 samples (reverse of server PCM encoding)
+                const samples = new Float32Array(uint8Array.length / 2);
+                const view = new DataView(uint8Array.buffer);
+                
+                for (let i = 0; i < samples.length; i++) {
+                    const int16 = view.getInt16(i * 2, true); // little endian
+                    samples[i] = int16 / 32768.0; // Convert back to float
+                }
+                
+                // Create AudioBuffer
+                const audioBuffer = audioContext.createBuffer(1, samples.length, 16000);
+                audioBuffer.getChannelData(0).set(samples);
+                
+                // Queue and play
+                audioQueue.push(audioBuffer);
+                if (!isPlaying) {
+                    isPlaying = true;
+                    playNextAudio();
+                }
+                
+            } catch (e) {
+                console.error('Error playing audio:', e);
+            }
+        }
+
+        function playNextAudio() {
+            if (audioQueue.length === 0 || !audioContext) {
+                isPlaying = false;
+                return;
+            }
+            
+            const audioBuffer = audioQueue.shift();
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            
+            source.onended = () => {
+                console.log('🎵 Audio chunk finished');
+                // Play next chunk immediately for seamless streaming
+                if (audioQueue.length > 0) {
+                    playNextAudio(); // No delay for continuous streaming
+                } else {
+                    isPlaying = false;
+                }
+            };
+            
+            source.start();
+            console.log('🔊 Playing audio chunk');
+        }
+
+        function connectTranscriptWebSocket(sessionId) {
+            if (transcriptWS) {
+                transcriptWS.close();
+            }
+
+            const wsUrl = `ws://localhost:8000/ws/transcript/${sessionId}`;
+            transcriptWS = new WebSocket(wsUrl);
+
+            transcriptWS.onopen = function(event) {
+                console.log('📝 Transcript WebSocket connected');
+                addToTranscript('system', 'Transcript stream connected');
+            };
+
+            transcriptWS.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                console.log('📝 Received transcript:', data);
+                
+                if (data.type === 'transcript') {
+                    addToTranscript(data.speaker, data.message);
+                } else if (data.type === 'connected') {
+                    console.log('✅ Transcript connection established');
+                }
+            };
+
+            transcriptWS.onclose = function(event) {
+                console.log('📝 Transcript WebSocket closed');
+            };
+
+            transcriptWS.onerror = function(error) {
+                console.error('📝 Transcript WebSocket error:', error);
+            };
+
+            // Send keepalive every 25 seconds
+            setInterval(() => {
+                if (transcriptWS && transcriptWS.readyState === WebSocket.OPEN) {
+                    transcriptWS.send('ping');
+                }
+            }, 25000);
+        }
+
+        function disconnectTranscriptWebSocket() {
+            if (transcriptWS) {
+                transcriptWS.close();
+                transcriptWS = null;
+            }
+        }
+
+        async function startVoiceSession() {
+            try {
+                showStatus('Creating voice session...', 'info');
+                
+                const userName = document.getElementById('userName').value;
+                const ttsProvider = document.getElementById('ttsProvider').value;
+                const voiceName = document.getElementById('voiceName').value;
+                
+                const requestBody = {
+                    tts_provider: ttsProvider
+                };
+                
+                if (userName) requestBody.user_name = userName;
+                if (voiceName) requestBody.voice_name = voiceName;
+                
+                const response = await fetch('/voice/connect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to create session');
+                }
+                
+                const data = await response.json();
+                currentSessionId = data.session_id;
+                
+                // Show session info
+                document.getElementById('sessionId').textContent = data.session_id;
+                document.getElementById('roomUrl').textContent = data.room_url;
+                document.getElementById('sessionInfo').style.display = 'block';
+                
+                // Connect to transcript WebSocket
+                connectTranscriptWebSocket(data.session_id);
+                
+                // Connect to audio WebSocket for TTS audio output
+                connectAudioWebSocket(data.session_id);
+                
+                // Create Daily call with proper audio configuration
+                dailyCall = DailyIframe.createCallObject({
+                    url: data.room_url,
+                    token: data.token,
+                    showLeaveButton: true,
+                    showFullscreenButton: false,
+                    showLocalVideo: false,
+                    showParticipantsBar: false,
+                })
+                
+                // Configure call settings for voice-only
+                await dailyCall.setInputDevicesAsync({
+                    audioSource: true,
+                    videoSource: false
+                });
+                
+                // Event listeners
+                dailyCall.on('joined-meeting', () => {
+                    showStatus('Connected! You can now speak to the voice agent.', 'success');
+                    document.getElementById('startVoiceBtn').disabled = true;
+                    document.getElementById('endVoiceBtn').disabled = false;
+                    
+                    // Ensure audio and video settings are correct
+                    dailyCall.setLocalAudio(true);
+                    dailyCall.setLocalVideo(false);
+                    console.log('🔊 Audio enabled and ready');
+                    
+                    // Log participants to see the AI bot
+                    console.log('👥 Participants:', dailyCall.participants());
+                    
+                    // Debug audio settings and ensure we subscribe to bot audio
+                    setTimeout(async () => {
+                        console.log('🔍 Call state:', dailyCall.meetingState());
+                        console.log('🔍 Participants after join:', dailyCall.participants());
+                        console.log('🔍 Local audio:', dailyCall.localAudio());
+                        
+                        // Find and subscribe to bot participant audio
+                        const participants = dailyCall.participants();
+                        for (const [id, participant] of Object.entries(participants)) {
+                            if (!participant.local) {  // This is the bot
+                                console.log('🤖 Found bot participant:', id);
+                                
+                                // Explicitly subscribe to participant audio using correct Daily.co API
+                                try {
+                                    // Method 1: Update receive settings
+                                    await dailyCall.updateReceiveSettings({
+                                        [id]: {
+                                            audio: 'subscribed'
+                                        }
+                                    });
+                                    console.log('✅ Subscribed to bot audio (method 1)');
+                                } catch (e) {
+                                    console.log('Method 1 failed, trying method 2:', e.message);
+                                    
+                                    // Method 2: Set participant media state
+                                    try {
+                                        await dailyCall.setParticipantMediaState(id, {
+                                            audio: { subscribed: true }
+                                        });
+                                        console.log('✅ Subscribed to bot audio (method 2)');
+                                    } catch (e2) {
+                                        console.error('❌ Both methods failed:', e2);
+                                        
+                                        // Method 3: Just log the current state and hope auto-subscription works
+                                        console.log('🔍 Bot participant full state:', participant);
+                                    }
+                                }
+                            }
+                        }
+                    }, 3000);
+                });
+                
+                dailyCall.on('left-meeting', () => {
+                    showStatus('Session ended.', 'info');
+                    cleanup();
+                });
+                
+                dailyCall.on('error', (error) => {
+                    showStatus(`Connection error: ${error.message}`, 'error');
+                    cleanup();
+                });
+
+                // Listen for audio-related events
+                dailyCall.on('participant-updated', (event) => {
+                    console.log('👤 Participant updated:', event.participant.session_id);
+                    
+                    // Check if this is the bot participant (not local)
+                    if (!event.participant.local) {
+                        console.log('🤖 Bot participant audio state:', {
+                            microphone: event.participant.audio?.microphone,
+                            volume: event.participant.audio?.volume
+                        });
+                        
+                        // Check if bot is sending audio
+                        if (event.participant.audio?.microphone?.state === 'sendable') {
+                            console.log('✅ Bot can send audio');
+                        }
+                        if (event.participant.audio?.microphone?.state === 'playable') {
+                            console.log('🔊 Bot audio should be playable');
+                        }
+                    }
+                });
+
+                // Listen for participant events to capture conversation
+                dailyCall.on('participant-updated', (event) => {
+                    // This captures when someone starts/stops speaking
+                    if (event.participant.audio && event.participant.local === false) {
+                        // Bot is speaking
+                        if (event.participant.audio.speaker && event.participant.audio.speaker.state === 'playing') {
+                            console.log('Bot started speaking');
+                        }
+                    }
+                });
+
+                // Listen for transcription events if available
+                dailyCall.on('transcription-message', (event) => {
+                    if (event.participantId === dailyCall.participants().local.session_id) {
+                        // User spoke
+                        addToTranscript('user', event.text);
+                    } else {
+                        // Bot spoke
+                        addToTranscript('assistant', event.text);
+                    }
+                });
+
+                // Alternative: Listen for app messages (if the voice agent sends them)
+                dailyCall.on('app-message', (event) => {
+                    if (event.data && event.data.type === 'transcript') {
+                        addToTranscript(event.data.speaker, event.data.message);
+                    }
+                });
+                
+                // Join the call
+                await dailyCall.join();
+                
+                // Show the call object
+                document.getElementById('daily-call-object').style.display = 'block';
+                
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                cleanup();
+            }
+        }
+        
+        async function endVoiceSession() {
+            if (dailyCall) {
+                await dailyCall.leave();
+            }
+            cleanup();
+        }
+        
+        function cleanup() {
+            if (dailyCall) {
+                dailyCall.destroy();
+                dailyCall = null;
+            }
+            disconnectTranscriptWebSocket();
+            
+            // Clean up audio WebSocket
+            if (audioWebSocket) {
+                audioWebSocket.close();
+                audioWebSocket = null;
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            audioQueue = [];
+            
+            currentSessionId = null;
+            document.getElementById('startVoiceBtn').disabled = false;
+            document.getElementById('endVoiceBtn').disabled = true;
+            document.getElementById('sessionInfo').style.display = 'none';
+            document.getElementById('daily-call-object').style.display = 'none';
+        }
+        
+        // Initialize
+        window.addEventListener('beforeunload', () => {
+            if (dailyCall) {
+                dailyCall.leave();
+            }
+        });
+    </script>
+</body>
+</html>

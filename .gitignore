@@ -4,6 +4,9 @@ env/
 ENV/
 .venv/
 virtualenv/
+application/venv/
+application/venv311/
+/application/application/venv311/
 
 # Python bytecode
 __pycache__/
@@ -44,6 +47,29 @@ logs/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# React build output
+application/static/voice-chat/build/
+application/static/voice-chat/dist/
+
+# React development files
+application/static/voice-chat/.env.local
+application/static/voice-chat/.env.development.local
+application/static/voice-chat/.env.test.local
+application/static/voice-chat/.env.production.local
+
+# Package lock files
+package-lock.json
+yarn.lock
+
+# Audio debug files
+static/debug_audio.html
 
 #github
 .github/

@@ -1,0 +1,32 @@
+# Web framework and server
+fastapi==0.115.12
+uvicorn==0.34.2
+
+# Async HTTP client
+aiohttp>=3.8.4
+
+# Additional utilities
+pytz==2025.2
+python-multipart>=0.0.6
+websockets>=11.0.3
+
+# For handling CORS
+starlette>=0.27.0
+
+# Logging and environment
+python-dotenv>=1.0.0
+
+# Pipecat AI voice processing framework
+pipecat-ai[daily,google,azure]==0.0.36
+
+# Image processing (compatible version for Python 3.13)
+Pillow>=10.0.0
+
+# Additional Pipecat dependencies
+numpy>=1.24.0
+
+# Google Cloud Speech
+google-cloud-speech
+
+# Additional dependencies
+loguru
