@@ -158,7 +158,7 @@ async def validate_euler_auth(token: str) -> ValidateEulerAuthResult:
         logger.error("validate_euler_auth called with empty token.")
         return EulerAuthError(status=ValidateEulerAuthStatus.OTHER_ERROR, message="Token cannot be empty.")
 
-    api_url = "https://portal.juspay.in/api/ec/v1/validate/token"
+    api_url = "https://sandbox.portal.juspay.in/api/ec/v1/validate/token"
     headers = {
         "accept": "*/*",
         "content-type": "application/json",

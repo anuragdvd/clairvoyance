@@ -1,9 +1,6 @@
 import uvicorn
 import json
-import subprocess
-import uuid
 import time
-from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
@@ -18,37 +15,22 @@ from pipecat.transports.services.helpers.daily_rest import DailyRESTHelper, Dail
 from app.ws.live_session import handle_websocket_session, get_active_connections, get_shutdown_event
 from app.core.logger import logger
 from app.core.config import DAILY_API_KEY, DAILY_API_URL, PORT, HOST
+from app.core.voice_session_manager import voice_session_manager, SessionConfig
 from app import __version__
 from app.schemas import AutomaticVoiceUserConnectRequest
-
-# Dictionary to track bot processes: {pid: (process, room_url)}
-bot_procs = {}
 
 # Store Daily API helpers
 daily_helpers = {}
 
 
-def cleanup():
-    """Cleanup function to terminate all bot processes.
+async def cleanup():
+    """Cleanup function to terminate all voice sessions.
 
     Called during server shutdown.
     """
-    logger.info(f"Attempting to terminate {len(bot_procs)} bot processes.")
-    for pid, (proc, room_url) in list(bot_procs.items()):
-        try:
-            if proc.poll() is None:
-                logger.info(f"Terminating process {pid} for room {room_url}...")
-                proc.terminate()
-                proc.wait()
-                logger.info(f"Process {pid} terminated successfully.")
-            else:
-                logger.info(f"Process {pid} for room {room_url} has already terminated.")
-        except Exception as e:
-            logger.error(f"Error terminating process {pid}: {e}", exc_info=True)
-        finally:
-            # Ensure the process is removed from the tracking dictionary
-            bot_procs.pop(pid, None)
-    logger.info("All bot processes have been handled.")
+    logger.info("Attempting to terminate all voice sessions.")
+    await voice_session_manager.terminate_all_sessions()
+    logger.info("All voice sessions have been handled.")
 
 
 @asynccontextmanager
@@ -67,8 +49,8 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info("Application shutdown event triggered...")
-    # Cleanup bot processes
-    cleanup()
+    # Cleanup voice sessions
+    await cleanup()
     # Close aiohttp session
     await aiohttp_session.close()
     logger.info("Aiohttp session closed.")
@@ -99,7 +81,10 @@ async def websocket_endpoint(websocket: WebSocket):
 # Pipecat bot endpoint
 @app.post("/agent/voice/automatic")
 async def bot_connect(request: AutomaticVoiceUserConnectRequest) -> Dict[str, Any]:
-    logger.info(f"Received new user connect request payload: {request.model_dump_json(exclude_none=True)}")
+    endpoint_start_time = time.time()
+    logger.info(f"🚀 NEW VOICE SESSION REQUEST at {time.strftime('%H:%M:%S.%f')[:-3]}")
+    logger.info(f"Request payload: {request.model_dump_json(exclude_none=True)}")
+    
     # 1. Validate request
     raw_mode = request.mode
     euler_tok = request.eulerToken
@@ -114,6 +99,7 @@ async def bot_connect(request: AutomaticVoiceUserConnectRequest) -> Dict[str, An
     platform_integrations = request.platformIntegrations
 
     # 2. Create room + token
+    room_creation_start = time.time()
     MAX_DURATION = 30 * 60
     room = await daily_helpers["rest"].create_room(
         params=DailyRoomParams(
@@ -137,54 +123,48 @@ async def bot_connect(request: AutomaticVoiceUserConnectRequest) -> Dict[str, An
         owner=True,
         params=token_params,
     )
+    
+    room_creation_time = time.time() - room_creation_start
+    logger.info(f"⏱️  Daily room + token created in {room_creation_time*1000:.1f}ms")
 
-    # 3. Generate unique session ID for this subprocess
-    session_id = str(uuid.uuid4())
-    logger.bind(session_id=session_id).info(f"Generated session ID for new voice agent: {session_id}")
-
-    # 4. Build command args list
-    bot_file = "app.agents.voice.automatic"
-    cmd = [
-        "python3", "-m", bot_file,
-        "-u", room.url,
-        "-t", token,
-        "--mode", raw_mode.upper() if raw_mode else None,
-        "--session-id", session_id,
-    ]
-
-    # Add user_name and tts_service regardless of mode
-    if user_name:
-        cmd += ["--user-name", user_name]
-    if tts_provider:
-        cmd += ["--tts-provider", tts_provider]
-    if voice_name:
-        cmd += ["--voice-name", voice_name]
-    if euler_tok:
-        cmd += ["--euler-token", euler_tok]
-    if breeze_tok:
-        cmd += ["--breeze-token", breeze_tok]
-    if shop_url:
-        cmd += ["--shop-url", shop_url]
-    if shop_id:
-        cmd += ["--shop-id", shop_id]
-    if shop_type:
-        cmd += ["--shop-type", shop_type]
-    if merchant_id:
-        cmd += ["--merchant-id", merchant_id]
-    if platform_integrations:
-        cmd += ["--platform-integrations"] + platform_integrations
-
-    # 5. Launch subprocess without shell
-    logger.bind(session_id=session_id).info(f"Launching subprocess with command: {' '.join(cmd)}")
-    proc = subprocess.Popen(
-        cmd,
-        cwd=Path(__file__).parent.parent,
-        bufsize=1,
+    # 3. Create session configuration
+    session_config = SessionConfig(
+        room_url=room.url,
+        token=token,
+        mode=raw_mode.upper() if raw_mode else None,
+        euler_token=euler_tok,
+        breeze_token=breeze_tok,
+        shop_url=shop_url,
+        shop_id=shop_id,
+        shop_type=shop_type,
+        user_name=user_name,
+        tts_provider=tts_provider,
+        voice_name=voice_name,
+        merchant_id=merchant_id,
+        platform_integrations=platform_integrations
     )
-    bot_procs[proc.pid] = (proc, room.url)
-    logger.bind(session_id=session_id).info(f"Subprocess started with PID: {proc.pid}")
 
-    return {"room_url": room.url, "token": token}
+    # 4. Create voice session as async task instead of subprocess
+    try:
+        session_creation_start = time.time()
+        session_id = await voice_session_manager.create_session(session_config)
+        session_creation_time = time.time() - session_creation_start
+        
+        total_endpoint_time = time.time() - endpoint_start_time
+        
+        logger.info(f"✅ Voice session created successfully with ID: {session_id}")
+        logger.info(f"⏱️  Session creation took {session_creation_time*1000:.1f}ms")
+        logger.info(f"🎯 TOTAL ENDPOINT RESPONSE TIME: {total_endpoint_time*1000:.1f}ms")
+        
+        return {
+            "room_url": room.url, 
+            "token": token,
+            "session_id": session_id
+        }
+    except Exception as e:
+        total_endpoint_time = time.time() - endpoint_start_time
+        logger.error(f"Failed to create voice session after {total_endpoint_time*1000:.1f}ms: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create voice session: {str(e)}")
 
 
 # Serve client.html at the root
@@ -203,6 +183,90 @@ async def health_check():
 async def get_version():
     """Get application version."""
     return JSONResponse({"version": __version__})
+
+# Session management endpoints
+@app.get("/sessions")
+async def list_sessions():
+    """List all active voice sessions."""
+    sessions = voice_session_manager.list_sessions()
+    session_info = []
+    for session_id, info in sessions.items():
+        session_info.append({
+            "session_id": session_id,
+            "status": info.status,
+            "created_at": info.created_at.isoformat(),
+            "user_name": info.config.user_name,
+            "room_url": info.config.room_url
+        })
+    return {
+        "active_sessions": len(sessions),
+        "sessions": session_info
+    }
+
+@app.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Get information about a specific session."""
+    session_info = voice_session_manager.get_session_info(session_id)
+    if not session_info:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return {
+        "session_id": session_id,
+        "status": session_info.status,
+        "created_at": session_info.created_at.isoformat(),
+        "config": {
+            "user_name": session_info.config.user_name,
+            "mode": session_info.config.mode,
+            "shop_id": session_info.config.shop_id,
+            "tts_provider": session_info.config.tts_provider,
+            "voice_name": session_info.config.voice_name
+        }
+    }
+
+@app.delete("/sessions/{session_id}")
+async def terminate_session(session_id: str):
+    """Terminate a specific voice session."""
+    success = await voice_session_manager.terminate_session(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return {"message": f"Session {session_id} terminated successfully"}
+
+# Voice locking control endpoints
+@app.get("/voice-locking/status")
+async def get_voice_locking_status():
+    """Get voice locking configuration and status."""
+    from app.core import config
+    
+    return {
+        "enabled": config.ENABLE_VOICE_LOCKING,
+        "enrollment_duration": config.SPEAKER_ENROLLMENT_DURATION,
+        "similarity_threshold": config.SPEAKER_SIMILARITY_THRESHOLD,
+        "chunk_size": config.DIARIZATION_CHUNK_SIZE,
+        "sensitivity": config.VOICE_LOCK_SENSITIVITY,
+        "quality_threshold": config.AUDIO_QUALITY_THRESHOLD
+    }
+
+@app.post("/sessions/{session_id}/voice-locking/enable")
+async def enable_voice_locking(session_id: str):
+    """Enable voice locking for a specific session."""
+    # Note: This would require extending session manager to support
+    # dynamic voice locking control per session
+    return {"message": "Voice locking control per session not yet implemented"}
+
+@app.post("/sessions/{session_id}/voice-locking/enroll")
+async def start_enrollment(session_id: str):
+    """Start speaker enrollment for voice locking."""
+    # Note: This would require extending session manager to support
+    # enrollment control
+    return {"message": "Manual enrollment control not yet implemented"}
+
+@app.get("/sessions/{session_id}/voice-locking/status")
+async def get_session_voice_locking_status(session_id: str):
+    """Get voice locking status for a specific session."""
+    # Note: This would require extending session manager to support
+    # per-session voice locking status
+    return {"message": "Per-session voice locking status not yet implemented"}
 
 # Graceful shutdown handling for WebSocket connections
 async def shutdown_server():

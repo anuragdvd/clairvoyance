@@ -48,8 +48,8 @@ PING_INTERVAL = int(os.environ.get("WS_PING_INTERVAL", 5))  # seconds
 PING_TIMEOUT = int(os.environ.get("WS_PING_TIMEOUT", 10))  # seconds
 
 # Juspay API configuration
-GENIUS_API_URL = "https://portal.juspay.in/api/q/query?api-type=genius-query"
-EULER_DASHBOARD_API_URL = os.environ.get("EULER_DASHBOARD_API_URL", "https://portal.juspay.in")
+GENIUS_API_URL = "https://sandbox.portal.juspay.in/api/q/query?api-type=genius-query"
+EULER_DASHBOARD_API_URL = os.environ.get("EULER_DASHBOARD_API_URL", "https://sandbox.portal.juspay.in")
 
 # VAD & framing for client-side audio chunking
 SAMPLE_RATE = 16000
@@ -84,3 +84,18 @@ logger.info(f"Shops enabled for Automatic MCP Server: {SHOPS_FOR_AUTOMATIC_MCP_S
 ENABLE_SUMMARIZATION = os.environ.get("ENABLE_SUMMARIZATION", "true").lower() == "true"
 MAX_TURNS_BEFORE_SUMMARY = int(os.environ.get("MAX_TURNS_BEFORE_SUMMARY", 10))
 KEEP_RECENT_TURNS = int(os.environ.get("KEEP_RECENT_TURNS", 2))
+
+# Voice Locking Configuration
+ENABLE_VOICE_LOCKING = os.environ.get("ENABLE_VOICE_LOCKING", "false").lower() == "true"
+HUGGINGFACE_HUB_TOKEN = os.environ.get("HUGGINGFACE_HUB_TOKEN")  # Optional, some models don't require it
+SPEAKER_ENROLLMENT_DURATION = float(os.environ.get("SPEAKER_ENROLLMENT_DURATION", 5.0))
+SPEAKER_SIMILARITY_THRESHOLD = float(os.environ.get("SPEAKER_SIMILARITY_THRESHOLD", 0.8))
+DIARIZATION_CHUNK_SIZE = float(os.environ.get("DIARIZATION_CHUNK_SIZE", 2.0))
+VOICE_LOCK_SENSITIVITY = float(os.environ.get("VOICE_LOCK_SENSITIVITY", 0.7))
+AUDIO_QUALITY_THRESHOLD = float(os.environ.get("AUDIO_QUALITY_THRESHOLD", 0.7))
+
+logger.info(f"Voice locking enabled: {ENABLE_VOICE_LOCKING}")
+if ENABLE_VOICE_LOCKING:
+    logger.info(f"Speaker enrollment duration: {SPEAKER_ENROLLMENT_DURATION}s")
+    logger.info(f"Speaker similarity threshold: {SPEAKER_SIMILARITY_THRESHOLD}")
+    logger.info(f"Voice lock sensitivity: {VOICE_LOCK_SENSITIVITY}")
