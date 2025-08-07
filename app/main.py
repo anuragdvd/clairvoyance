@@ -232,41 +232,6 @@ async def terminate_session(session_id: str):
     
     return {"message": f"Session {session_id} terminated successfully"}
 
-# Voice locking control endpoints
-@app.get("/voice-locking/status")
-async def get_voice_locking_status():
-    """Get voice locking configuration and status."""
-    from app.core import config
-    
-    return {
-        "enabled": config.ENABLE_VOICE_LOCKING,
-        "enrollment_duration": config.SPEAKER_ENROLLMENT_DURATION,
-        "similarity_threshold": config.SPEAKER_SIMILARITY_THRESHOLD,
-        "chunk_size": config.DIARIZATION_CHUNK_SIZE,
-        "sensitivity": config.VOICE_LOCK_SENSITIVITY,
-        "quality_threshold": config.AUDIO_QUALITY_THRESHOLD
-    }
-
-@app.post("/sessions/{session_id}/voice-locking/enable")
-async def enable_voice_locking(session_id: str):
-    """Enable voice locking for a specific session."""
-    # Note: This would require extending session manager to support
-    # dynamic voice locking control per session
-    return {"message": "Voice locking control per session not yet implemented"}
-
-@app.post("/sessions/{session_id}/voice-locking/enroll")
-async def start_enrollment(session_id: str):
-    """Start speaker enrollment for voice locking."""
-    # Note: This would require extending session manager to support
-    # enrollment control
-    return {"message": "Manual enrollment control not yet implemented"}
-
-@app.get("/sessions/{session_id}/voice-locking/status")
-async def get_session_voice_locking_status(session_id: str):
-    """Get voice locking status for a specific session."""
-    # Note: This would require extending session manager to support
-    # per-session voice locking status
-    return {"message": "Per-session voice locking status not yet implemented"}
 
 # Graceful shutdown handling for WebSocket connections
 async def shutdown_server():

@@ -5,6 +5,17 @@ from pipecat.services.llm_service import FunctionCallParams
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
+from .ui_tools import (
+    generate_ui_component,
+    generate_bar_chart,
+    generate_line_chart,
+    generate_donut_chart,
+    ui_component_schema,
+    bar_chart_schema,
+    line_chart_schema,
+    donut_chart_schema
+)
+
 async def get_current_time(params: FunctionCallParams):
     timezone_str = params.arguments.get("timezone", "Asia/Kolkata")
     try:
@@ -29,9 +40,17 @@ get_current_time_function = FunctionSchema(
 tools = ToolsSchema(
     standard_tools=[
         get_current_time_function,
+        ui_component_schema,
+        bar_chart_schema,
+        line_chart_schema,
+        donut_chart_schema,
     ]
 )
 
 tool_functions = {
     "get_current_time": get_current_time,
+    "generate_ui_component": generate_ui_component,
+    "generate_bar_chart": generate_bar_chart,
+    "generate_line_chart": generate_line_chart,
+    "generate_donut_chart": generate_donut_chart,
 }
